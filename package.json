@@ -1,0 +1,9 @@
+{
+  "name": "volhard-dog-nutrition",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Creative review page for Volhard Dog Nutrition, The Volhard Pack Episode 1",
+  "engines": {
+    "node": ">=18"
+  }
+}
