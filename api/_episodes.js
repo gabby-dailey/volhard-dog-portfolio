@@ -13,7 +13,7 @@ module.exports = [
     headline: 'The Volhard Pack Episode 1',
     video: {
       type: 'file',
-      src: '/videos/the-volhard-pack-episode-1.mp4',
+      src: '/videos/the-volhard-pack-episode-1-v6.mp4',
     },
   },
 ];
