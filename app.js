@@ -220,7 +220,6 @@ function renderArchive(showing) {
     const img = document.createElement('img');
     img.src = posterFor(episode);
     img.alt = '';
-    img.loading = 'lazy';
     const icon = document.createElement('span');
     icon.className = 'archive-play';
     icon.innerHTML = PLAY_ICON;
