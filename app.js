@@ -1,5 +1,9 @@
 const main = document.getElementById('main');
 
+const PLAY_ICON =
+  '<svg viewBox="0 0 24 24" width="56" height="56" aria-hidden="true"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>';
+
+let episodes = [];
 let ytPlayer = null;
 let currentObserver = null;
 
@@ -51,18 +55,27 @@ function watchPanelVisibility(onFullyVisible, onPartlyOrNotVisible) {
   currentObserver = observer;
 }
 
-function buildYoutubeVideo(mount, youtubeId) {
+function posterFor(episode) {
+  if (episode.poster) return episode.poster;
+  if (episode.video.type === 'youtube') {
+    return `https://i.ytimg.com/vi/${episode.video.youtubeId}/hqdefault.jpg`;
+  }
+  return '';
+}
+
+function buildYoutubeVideo(mount, episode, autoplay) {
+  const youtubeId = episode.video.youtubeId;
+
   const poster = document.createElement('img');
   poster.className = 'video-poster';
-  poster.alt = 'Video preview frame';
-  poster.src = `https://i.ytimg.com/vi/${youtubeId}/hqdefault.jpg`;
+  poster.alt = '';
+  poster.src = posterFor(episode);
 
   const playBtn = document.createElement('button');
   playBtn.className = 'play-btn';
   playBtn.type = 'button';
   playBtn.setAttribute('aria-label', 'Play video');
-  playBtn.innerHTML =
-    '<svg viewBox="0 0 24 24" width="56" height="56"><path fill="currentColor" d="M8 5v14l11-7z"/></svg>';
+  playBtn.innerHTML = PLAY_ICON;
 
   const frame = document.createElement('div');
   frame.className = 'video-frame';
@@ -77,7 +90,7 @@ function buildYoutubeVideo(mount, youtubeId) {
   let wantsPlay = false;
   let scrollPausing = false;
 
-  playBtn.addEventListener('click', async () => {
+  async function start() {
     poster.hidden = true;
     playBtn.hidden = true;
     wantsPlay = true;
@@ -118,12 +131,16 @@ function buildYoutubeVideo(mount, youtubeId) {
         },
       },
     });
-  });
+  }
+
+  playBtn.addEventListener('click', start);
+  if (autoplay) start();
 }
 
-function buildFileVideo(mount, src) {
+function buildFileVideo(mount, episode, autoplay) {
   const video = document.createElement('video');
-  video.src = src;
+  video.src = episode.video.src;
+  video.poster = posterFor(episode);
   video.controls = true;
   video.preload = 'metadata';
   video.playsInline = true;
@@ -157,42 +174,83 @@ function buildFileVideo(mount, src) {
       }
     }
   );
+
+  // Picking an episode from the archive is a click, so it can start with sound.
+  if (autoplay) video.play().catch(() => {});
 }
 
-function renderEpisode(episode) {
+// Shows `episode` in the main player. `autoplay` is only set when the viewer
+// picked it from the archive, which counts as pressing play.
+function renderEpisode(episode, autoplay) {
   teardownVideo();
 
   const mount = document.getElementById('video-mount');
   mount.innerHTML = '';
 
   if (episode.video.type === 'youtube') {
-    buildYoutubeVideo(mount, episode.video.youtubeId);
+    buildYoutubeVideo(mount, episode, autoplay);
   } else if (episode.video.type === 'file') {
-    buildFileVideo(mount, episode.video.src);
+    buildFileVideo(mount, episode, autoplay);
   }
 
   document.getElementById('headline').textContent = episode.headline;
-
-  document.querySelectorAll('.archive-item').forEach((el) => {
-    el.classList.toggle('active', el.dataset.episodeId === episode.id);
-  });
+  renderArchive(episode);
 }
 
-function renderArchiveList(episodeList) {
+// The archive lists every episode except the one in the player, newest first,
+// so the latest episode is always one click away while watching an older one.
+function renderArchive(showing) {
   const section = document.getElementById('archive-section');
+  const heading = document.getElementById('archive-heading');
   const list = document.getElementById('archive-list');
   list.innerHTML = '';
 
-  section.hidden = episodeList.length <= 1;
+  const others = episodes.filter((e) => e.id !== showing.id);
+  section.hidden = others.length === 0;
+  heading.textContent = showing.current ? 'Past Episodes' : 'More Episodes';
 
-  episodeList.forEach((episode) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'archive-item';
-    btn.textContent = episode.label;
-    btn.dataset.episodeId = episode.id;
-    btn.addEventListener('click', () => renderEpisode(episode));
-    list.appendChild(btn);
+  others.forEach((episode) => {
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'archive-card';
+    card.setAttribute('aria-label', `Watch ${episode.label}`);
+
+    const thumb = document.createElement('span');
+    thumb.className = 'archive-thumb';
+    const img = document.createElement('img');
+    img.src = posterFor(episode);
+    img.alt = '';
+    img.loading = 'lazy';
+    const icon = document.createElement('span');
+    icon.className = 'archive-play';
+    icon.innerHTML = PLAY_ICON;
+    thumb.appendChild(img);
+    thumb.appendChild(icon);
+
+    card.appendChild(thumb);
+
+    if (episode.current) {
+      const tag = document.createElement('span');
+      tag.className = 'archive-tag';
+      tag.textContent = 'Latest';
+      card.appendChild(tag);
+    }
+
+    const label = document.createElement('span');
+    label.className = 'archive-label';
+    label.textContent = episode.label;
+    card.appendChild(label);
+
+    card.addEventListener('click', () => {
+      // Jump (no smooth scroll) back up as far as possible while keeping the
+      // whole player on screen, so the visibility rule doesn't pause it at once.
+      const panel = document.getElementById('video-panel');
+      const panelBottom = panel.getBoundingClientRect().bottom + window.scrollY;
+      window.scrollTo({ top: Math.max(0, panelBottom - window.innerHeight + 24), behavior: 'instant' });
+      renderEpisode(episode, true);
+    });
+
+    list.appendChild(card);
   });
 }
 
@@ -200,10 +258,9 @@ async function init() {
   const res = await fetch('/api/content', { cache: 'no-store' });
   if (!res.ok) return;
   const data = await res.json();
-  const episodes = data.episodes;
+  episodes = data.episodes;
   const current = episodes.find((e) => e.current) || episodes[0];
-  renderArchiveList(episodes);
   main.hidden = false;
-  renderEpisode(current);
+  renderEpisode(current, false);
 }
 init();
