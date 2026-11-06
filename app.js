@@ -194,6 +194,9 @@ function renderEpisode(episode, autoplay) {
   }
 
   document.getElementById('headline').textContent = episode.headline;
+  const noteEl = document.getElementById('headline-note');
+  noteEl.textContent = episode.note || '';
+  noteEl.hidden = !episode.note;
   renderArchive(episode);
 }
 
@@ -228,10 +231,11 @@ function renderArchive(showing) {
 
     card.appendChild(thumb);
 
-    if (episode.current) {
+    const tags = [episode.current ? 'Latest' : null, episode.note].filter(Boolean);
+    if (tags.length) {
       const tag = document.createElement('span');
       tag.className = 'archive-tag';
-      tag.textContent = 'Latest';
+      tag.textContent = tags.join(' · ');
       card.appendChild(tag);
     }
 
